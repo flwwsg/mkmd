@@ -4,7 +4,7 @@ import (
 	"testing"
 )
 
-var pkgPath = `D:\dev\go\src\mkmd`
+var pkgPath = `/home/lblue/dev/go/src/mkmd`
 
 // find all package
 func TestFindPackage(t *testing.T) {
@@ -23,7 +23,7 @@ func TestFindPackage(t *testing.T) {
 		t.Error("api demo does not has resp")
 	}
 	for _, req := range resp.Req {
-		if req.Name != "id" {
+		if req.Name != "ID" && req.Alias != "id" {
 			t.Error("api demo does not has id request")
 		}
 	}

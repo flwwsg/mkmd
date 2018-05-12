@@ -120,13 +120,12 @@ func FindPackage(pkgRoot string) map[string]*APIStruct {
 // ParseTag get api field
 func (api *APIStruct) ParseTag(f *ast.Field, t string) {
 	// t = "dcapi: xx; xx:xxx; ddd"
-	if strings.Contains(t, "skip") {
+	if !api.IsValidTag(t) {
 		return
 	}
-	t = t[strings.Index(t, ":")+1:]
+	t = t[strings.Index(t, ":")+2 : len(t)-1]
 	fields := strings.Split(t, ";")
 	desc := new(APIDesc)
-	desc.APIType = f.Type
 	if strings.Contains(t, "req") {
 		api.Req = append(api.Req, desc)
 	} else if strings.Contains(t, "resp") {
@@ -135,13 +134,15 @@ func (api *APIStruct) ParseTag(f *ast.Field, t string) {
 		// not such type
 		return
 	}
+	desc.APIType = f.Type
+	desc.Name = f.Names[0].Name
 	for _, field := range fields {
 		field = strings.TrimSpace(field)
 		tag := strings.Split(field, ":")
 		switch tag[0] {
 		case "alias":
 			if len(tag) > 1 {
-				desc.Name = tag[1]
+				desc.Alias = tag[1]
 			}
 		case "desc":
 			if len(tag) > 1 {
@@ -155,6 +156,17 @@ func (api *APIStruct) ParseTag(f *ast.Field, t string) {
 	}
 }
 
+// IsValidTag check tag is valid or not
+func (api *APIStruct) IsValidTag(t string) bool {
+	if strings.Contains(t, "skip") {
+		return false
+	}
+	if strings.Contains(t, "-") {
+		return false
+	}
+	return true
+}
+
 // AddActionID get action id if exists
 func (api *APIStruct) AddActionID(name string) {
 	re := regexp.MustCompile("[0-9]+")
@@ -162,7 +174,6 @@ func (api *APIStruct) AddActionID(name string) {
 	if len(res) == 1 {
 		api.ActionID = res[0]
 	}
-
 }
 
 // helper function
