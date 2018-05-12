@@ -37,17 +37,27 @@ func TestFindPackage(t *testing.T) {
 }
 
 // find req tag
-// func TestFindREQTag(t *testing.T) {
-// 	pkgs := FindPackage(pkgPath)
-// 	for _, pkg := range pkgs {
-
-// 	}
-// }
-
-// find resp tag
+func TestFindREQTag(t *testing.T) {
+	pkgs := FindPackage(pkgPath)
+	if _, ok := pkgs["pkg1"]; !ok {
+		t.Error("pkg1 does not in package")
+	}
+	if _, ok := pkgs["pkg2"]; !ok {
+		t.Error("pkg2 does not in package")
+	}
+}
 
 // find inner struct
+func TestInnerStruct(t *testing.T) {
+	pkg, ok := FindPackage(pkgPath)["pkg3"]
+	if !ok {
+		t.Error("pkg3 does not in package")
+	}
+	if pkg.Req[0].Alias != "fid" {
+		t.Error("pkg3 does not has fid")
+	}
+	t.Errorf("%q", pkg)
 
-// set default req and req
+}
 
 // format md

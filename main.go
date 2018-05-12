@@ -27,8 +27,14 @@ type structType struct {
 type APIStruct struct {
 	PKGName  string
 	ActionID string
-	Req      []*APIDesc
-	Resp     []*APIDesc
+	Req      []*APIContainer
+	Resp     []*APIContainer
+}
+
+// APIContainer accept inner struct
+type APIContainer struct {
+	Main []*APIDesc
+	Sub  map[string]*APIContainer
 }
 
 // APIDesc get api's name, type , desc
@@ -86,12 +92,13 @@ func FindPackage(pkgRoot string) map[string]*APIStruct {
 			api.PKGName = pkgname
 			resp[pkgname] = api
 			var findStruct = func(n ast.Node) bool {
-				var actionName string
+				var structName string
 				var t ast.Expr
 				// get type specification
 				switch x := n.(type) {
 				case *ast.TypeSpec:
-					actionName = x.Name.Name
+					structName = x.Name.Name
+					fmt.Printf("\n==============\n %s", structName)
 					t = x.Type
 				default:
 					return true
@@ -100,9 +107,9 @@ func FindPackage(pkgRoot string) map[string]*APIStruct {
 				if !ok {
 					return true
 				}
-				api.AddActionID(actionName)
+				api.AddStruct(structName)
 				for _, f := range x.Fields.List {
-					if f.Tag == nil {
+					if f.Tag == nil || !strings.Contains(f.Tag.Value, TokenTag) {
 						continue
 					}
 					dctag := GetTag(f.Tag.Value, TokenTag)
@@ -119,21 +126,21 @@ func FindPackage(pkgRoot string) map[string]*APIStruct {
 
 // ParseTag get api field
 func (api *APIStruct) ParseTag(f *ast.Field, t string) {
-	// t = "dcapi: xx; xx:xxx; ddd"
+	// t = "dcapi: \"xx; xx:xxx; ddd\""
 	if !api.IsValidTag(t) {
 		return
 	}
-	t = t[strings.Index(t, ":")+2 : len(t)-1]
+	t = t[strings.Index(t, "\"")+1 : strings.LastIndex(t, "\"")]
 	fields := strings.Split(t, ";")
 	desc := new(APIDesc)
-	if strings.Contains(t, "req") {
-		api.Req = append(api.Req, desc)
-	} else if strings.Contains(t, "resp") {
-		api.Resp = append(api.Resp, desc)
-	} else {
-		// not such type
-		return
-	}
+	// if strings.Contains(t, "req") {
+	// 	api.Req = append(api.Req, desc)
+	// } else if strings.Contains(t, "resp") {
+	// 	api.Resp = append(api.Resp, desc)
+	// } else {
+	// 	// not such type
+	// 	return
+	// }
 	desc.APIType = f.Type
 	desc.Name = f.Names[0].Name
 	for _, field := range fields {
@@ -167,13 +174,17 @@ func (api *APIStruct) IsValidTag(t string) bool {
 	return true
 }
 
-// AddActionID get action id if exists
-func (api *APIStruct) AddActionID(name string) {
+// AddStruct get action id if exists
+func (api *APIStruct) AddStruct(name string) {
 	re := regexp.MustCompile("[0-9]+")
 	res := re.FindAllString(name, -1)
 	if len(res) == 1 {
 		api.ActionID = res[0]
 	}
+}
+
+func (api *APIStruct) IsInAction(structName string) {
+
 }
 
 // helper function
