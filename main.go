@@ -27,8 +27,8 @@ type structType struct {
 type APIStruct struct {
 	PKGName  string
 	ActionID string
-	Req      []*APIContainer
-	Resp     []*APIContainer
+	Main     *[]*APIDesc
+	Sub      *map[string]*APIContainer
 }
 
 // APIContainer accept inner struct
@@ -42,9 +42,9 @@ type APIDesc struct {
 	Name      string
 	Alias     string
 	Default   interface{}
-	APIType   ast.Expr
+	ValueType ast.Expr
 	Desc      string
-	ValueType interface{}
+	APIType   string
 }
 
 func main() {
@@ -79,53 +79,26 @@ func FindPackage(pkgRoot string) map[string]*APIStruct {
 	for _, dir := range dirs {
 		files := ListDir(dir, true, false)
 		for _, file := range files {
-			if !strings.HasSuffix(file, "go") {
+			pkgName, actionID, pkg := getAllStruct(file)
+			if len(pkg) < 1 {
 				continue
 			}
-			fs := token.NewFileSet()
-			f, err := parser.ParseFile(fs, file, nil, parser.ParseComments)
-			if err != nil {
-				log.Fatal(err)
-			}
-			pkgname := f.Name.String()
+			t := getSingleAction(actionID, pkg)
+			// fmt.Println("---------------------")
+			// fmt.Printf("%q\n", t)
 			api := new(APIStruct)
-			api.PKGName = pkgname
-			resp[pkgname] = api
-			var findStruct = func(n ast.Node) bool {
-				var structName string
-				var t ast.Expr
-				// get type specification
-				switch x := n.(type) {
-				case *ast.TypeSpec:
-					structName = x.Name.Name
-					fmt.Printf("\n==============\n %s", structName)
-					t = x.Type
-				default:
-					return true
-				}
-				x, ok := t.(*ast.StructType)
-				if !ok {
-					return true
-				}
-				api.AddStruct(structName)
-				for _, f := range x.Fields.List {
-					if f.Tag == nil || !strings.Contains(f.Tag.Value, TokenTag) {
-						continue
-					}
-					dctag := GetTag(f.Tag.Value, TokenTag)
-					api.ParseTag(f, dctag)
-				}
-				return true
-			}
-			ast.Inspect(f, findStruct)
+			api.SetActionID(actionID)
+			api.Main = &t.Main
+			api.Sub = &t.Sub
+			api.PKGName = pkgName
+			resp[pkgName] = api
 		}
-
 	}
 	return resp
 }
 
 // ParseTag get api field
-func (api *APIStruct) ParseTag(f *ast.Field, t string) {
+func (api *APIContainer) ParseTag(f *ast.Field, t string) {
 	// t = "dcapi: \"xx; xx:xxx; ddd\""
 	if !api.IsValidTag(t) {
 		return
@@ -133,15 +106,15 @@ func (api *APIStruct) ParseTag(f *ast.Field, t string) {
 	t = t[strings.Index(t, "\"")+1 : strings.LastIndex(t, "\"")]
 	fields := strings.Split(t, ";")
 	desc := new(APIDesc)
-	// if strings.Contains(t, "req") {
-	// 	api.Req = append(api.Req, desc)
-	// } else if strings.Contains(t, "resp") {
-	// 	api.Resp = append(api.Resp, desc)
-	// } else {
-	// 	// not such type
-	// 	return
-	// }
-	desc.APIType = f.Type
+	if strings.Contains(t, "req") {
+		desc.APIType = "req"
+	} else if strings.Contains(t, "resp") {
+		desc.APIType = "resp"
+	} else {
+		// not such type
+		return
+	}
+	desc.ValueType = f.Type
 	desc.Name = f.Names[0].Name
 	for _, field := range fields {
 		field = strings.TrimSpace(field)
@@ -161,10 +134,11 @@ func (api *APIStruct) ParseTag(f *ast.Field, t string) {
 			}
 		}
 	}
+	api.Main = append(api.Main, desc)
 }
 
 // IsValidTag check tag is valid or not
-func (api *APIStruct) IsValidTag(t string) bool {
+func (api *APIContainer) IsValidTag(t string) bool {
 	if strings.Contains(t, "skip") {
 		return false
 	}
@@ -174,17 +148,13 @@ func (api *APIStruct) IsValidTag(t string) bool {
 	return true
 }
 
-// AddStruct get action id if exists
-func (api *APIStruct) AddStruct(name string) {
+// SetActionID get action id if exists
+func (api *APIStruct) SetActionID(name string) {
 	re := regexp.MustCompile("[0-9]+")
 	res := re.FindAllString(name, -1)
 	if len(res) == 1 {
 		api.ActionID = res[0]
 	}
-}
-
-func (api *APIStruct) IsInAction(structName string) {
-
 }
 
 // helper function
@@ -221,4 +191,89 @@ func GetTag(t string, tk string) string {
 		return t[dcStart : dcStart+firstQ+dcEnd+2]
 	}
 	return ""
+}
+
+// IsActionID check given name is action id or not
+func IsActionID(name string) bool {
+	re := regexp.MustCompile("[0-9]+")
+	res := re.FindAllString(name, -1)
+	if len(res) == 1 {
+		return true
+	}
+	return false
+}
+
+// getAllStruct get all struct with specified file path
+func getAllStruct(filePath string) (pkgName string, actionID string, allStruct []*structType) {
+	if !strings.HasSuffix(filePath, "go") {
+		return "", "", *new([]*structType)
+	}
+	fs := token.NewFileSet()
+	f, err := parser.ParseFile(fs, filePath, nil, parser.ParseComments)
+	if err != nil {
+		log.Fatal(err)
+	}
+	allStruct = make([]*structType, 0)
+	actionID = ""
+	var findStruct = func(n ast.Node) bool {
+		var structName string
+		var t ast.Expr
+		// get type specification
+		switch x := n.(type) {
+		case *ast.TypeSpec:
+			structName = x.Name.Name
+			if ok := IsActionID(structName); ok {
+				actionID = structName
+			}
+			fmt.Printf("\n==============\n%s \n", structName)
+			t = x.Type
+		default:
+			return true
+		}
+		x, ok := t.(*ast.StructType)
+		if !ok {
+			return true
+		}
+		s := new(structType)
+		s.name = structName
+		s.node = x
+		allStruct = append(allStruct, s)
+		return true
+	}
+	ast.Inspect(f, findStruct)
+	return f.Name.String(), actionID, allStruct
+}
+
+func getSingleAction(name string, structs []*structType) *APIContainer {
+	index := indexStruct(name, structs)
+	if index == -1 {
+		return nil
+	}
+	api := new(APIContainer)
+	for _, f := range structs[index].node.Fields.List {
+		if f.Tag == nil || !strings.Contains(f.Tag.Value, TokenTag) {
+			continue
+		}
+		dctag := GetTag(f.Tag.Value, TokenTag)
+		api.ParseTag(f, dctag)
+		typeName := fmt.Sprintf("%s", f.Type)
+		c := getSingleAction(typeName, structs)
+		if c != nil {
+			if api.Sub == nil {
+				api.Sub = make(map[string]*APIContainer, 0)
+			}
+			api.Sub[typeName] = c
+		}
+	}
+	return api
+}
+
+// indexStruct get the index of specified name in given structs
+func indexStruct(name string, s []*structType) int {
+	for i, t := range s {
+		if t.name == name {
+			return i
+		}
+	}
+	return -1
 }

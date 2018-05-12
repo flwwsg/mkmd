@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"testing"
 )
 
@@ -16,28 +17,24 @@ func TestFindPackage(t *testing.T) {
 	if resp.ActionID != "999" {
 		t.Errorf("demo actionID %s != 999", resp.ActionID)
 	}
-	if len(resp.Req) != 1 {
+	if len(*resp.Main) != 2 {
 		t.Error("api demo does not has request")
 	}
-	if len(resp.Resp) != 1 {
-		t.Error("api demo does not has resp")
-	}
-	for _, req := range resp.Req {
-		if req.Name != "ID" && req.Alias != "id" {
-			t.Error("api demo does not has id request")
+	for _, field := range *resp.Main {
+		switch field.Name {
+		case "ID":
+			if field.Alias != "id" {
+				t.Error("api demo does not has id field")
+			}
+		case "Number":
+		default:
+			t.Error("api demo does not has Number or ID field")
 		}
 	}
-
-	for _, r := range resp.Resp {
-		if r.Name != "Number" {
-			t.Error("api demo does not has Number resp")
-		}
-	}
-
 }
 
-// find req tag
-func TestFindREQTag(t *testing.T) {
+// find multiple package
+func TestFindMuliplePackage(t *testing.T) {
 	pkgs := FindPackage(pkgPath)
 	if _, ok := pkgs["pkg1"]; !ok {
 		t.Error("pkg1 does not in package")
@@ -53,11 +50,26 @@ func TestInnerStruct(t *testing.T) {
 	if !ok {
 		t.Error("pkg3 does not in package")
 	}
-	if pkg.Req[0].Alias != "fid" {
-		t.Error("pkg3 does not has fid")
+	for _, field := range *pkg.Main {
+		switch field.Name {
+		case "FamilyID":
+			if field.Alias != "fid" {
+				t.Error("api demo does not has fid field")
+			}
+		case "ChildInfo":
+			tname := fmt.Sprintf("%s", field.ValueType)
+			fmt.Print(tname)
+			resp, ok := (*pkg.Sub)[tname]
+			if !ok {
+				t.Errorf("api demo does not find inner struct %s", tname)
+			}
+			if resp.Sub != nil {
+				t.Errorf("api's inner struct %s has bad inner struct", tname)
+			}
+		default:
+			t.Errorf("api demo has bad field %s", field.Name)
+		}
 	}
-	t.Errorf("%q", pkg)
-
 }
 
-// format md
+// // format md
