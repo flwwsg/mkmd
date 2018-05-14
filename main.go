@@ -4,6 +4,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"go/ast"
 	"go/parser"
@@ -13,10 +14,22 @@ import (
 	"path"
 	"regexp"
 	"strings"
+	"text/template"
 )
 
 // TokenTag tag name
 const TokenTag = "dcapi"
+
+// DocTemplate template of md
+const DocTemplate = `
+{{if ne .APIType ""}}
+** {{.APIType | printActionType}} **
+
+字段|类型|默认值|描述|
+---|---|---|---
+{{end -}}
+{{- .Name}} | {{.ValueType | printf "%s" }} | {{.Default }} | {{ .Desc | printDesc -}}
+`
 
 type structType struct {
 	name string
@@ -25,10 +38,10 @@ type structType struct {
 
 // APIStruct descript api
 type APIStruct struct {
-	PKGName  string
-	ActionID string
-	Main     *[]*APIDesc
-	Sub      *map[string]*APIContainer
+	PKGName    string
+	ActionID   string
+	Container  *APIContainer
+	ActionDesc string
 }
 
 // APIContainer accept inner struct
@@ -42,9 +55,21 @@ type APIDesc struct {
 	Name      string
 	Alias     string
 	Default   interface{}
-	ValueType ast.Expr
+	ValueType string
 	Desc      string
 	APIType   string
+}
+
+// APIDoc make markdown
+type APIDoc struct {
+	ActionID   string
+	ActionDesc string
+	Name       string
+	Default    string
+	ValueType  string
+	Desc       string
+	APIType    string
+	SubName    string
 }
 
 func main() {
@@ -56,20 +81,99 @@ func main() {
 	}
 	fmt.Printf("%q\n", f)
 	fmt.Printf("%s\n", f.Name)
-	ast.Inspect(f, findStruct)
 }
 
-func findStruct(n ast.Node) bool {
-	x, ok := n.(*ast.StructType)
-	if !ok {
-		return true
+// FormateAPI generate request md file
+func FormateAPI(pkg *APIStruct) string {
+	var printActionType = func(apiType string) string {
+		if apiType == "req" {
+			return "请求"
+		} else if apiType == "resp" {
+			return "响应"
+		}
+		panic(fmt.Sprintf("%s type does not supported", apiType))
 	}
-	for _, f := range x.Fields.List {
-		fmt.Println("tag is ", f.Tag)
-		fmt.Println("type is ", f.Type)
-		fmt.Println("name is ", f.Names)
+	var printDesc = func(desc string) string {
+		if desc == "" {
+			return "无"
+		}
+		return desc
 	}
-	return true
+	doc, err := template.New("request").Funcs(template.FuncMap{
+		"printActionType": printActionType, "printDesc": printDesc}).
+		Parse(DocTemplate)
+	if err != nil {
+		log.Fatal(err)
+	}
+	var b bytes.Buffer
+	role := new(APIDesc)
+	role.Name = "rid"
+	role.Default = "无"
+	role.ValueType = "string"
+	role.APIType = "req"
+	pkg.Container.Main = append(pkg.Container.Main, role)
+	s := "\n## %s %s"
+	b.WriteString(fmt.Sprintf(s, pkg.ActionID, pkg.ActionDesc))
+	ParseField(pkg.Container, doc, "req", &b, true, "")
+	ParseField(pkg.Container, doc, "resp", &b, true, "")
+	return b.String()
+}
+
+// ParseField get each field of api
+func ParseField(c *APIContainer, doc *template.Template, apiType string, b *bytes.Buffer, addTag bool, fieldName string) {
+	for _, api := range c.Main {
+		if api.APIType != apiType {
+			continue
+		}
+		newField := new(APIDoc)
+		// alias works only in request
+		if api.Alias != "" && apiType == "req" {
+			newField.Name = api.Alias
+		} else {
+			newField.Name = api.Name
+		}
+		switch t := api.Default.(type) {
+		case string:
+			if api.Default.(string) == "" {
+				newField.Default = "无"
+			} else {
+				newField.Default = api.Default.(string)
+			}
+
+		case int, int8, int16, int32, int64:
+			newField.Default = fmt.Sprintf("%d", api.Default)
+		case float32, float64:
+			newField.Default = fmt.Sprintf("%f", api.Default)
+		case bool:
+			newField.Default = fmt.Sprintf("%b", api.Default)
+		case nil:
+			newField.Default = "无"
+		default:
+			panic(fmt.Sprintf("%s does not support yet", t))
+		}
+		newField.ValueType = api.ValueType
+		newField.Desc = api.Desc
+		if _, ok := c.Sub[api.ValueType]; ok {
+			newField.SubName = api.ValueType
+		}
+		if addTag {
+			newField.APIType = apiType
+			addTag = false
+		}
+		if fieldName != "" {
+			s := "\n\n** %s **\n\n字段|类型|默认值|描述|\n---|---|---|---"
+			b.WriteString(fmt.Sprintf(s, fieldName))
+			fieldName = ""
+		}
+		err := doc.Execute(b, newField)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+	for name, sub := range c.Sub {
+		ParseField(sub, doc, apiType, b, false, name)
+	}
+
 }
 
 // FindPackage get all package with specified path
@@ -88,8 +192,8 @@ func FindPackage(pkgRoot string) map[string]*APIStruct {
 			// fmt.Printf("%q\n", t)
 			api := new(APIStruct)
 			api.SetActionID(actionID)
-			api.Main = &t.Main
-			api.Sub = &t.Sub
+			api.Container = t
+
 			api.PKGName = pkgName
 			resp[pkgName] = api
 		}
@@ -114,7 +218,7 @@ func (api *APIContainer) ParseTag(f *ast.Field, t string) {
 		// not such type
 		return
 	}
-	desc.ValueType = f.Type
+	desc.ValueType = fmt.Sprintf("%s", f.Type)
 	desc.Name = f.Names[0].Name
 	for _, field := range fields {
 		field = strings.TrimSpace(field)

@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-var pkgPath = `/home/lblue/dev/go/src/mkmd`
+var pkgPath = `D:\dev\go\src\mkmd`
 
 // find all package
 func TestFindPackage(t *testing.T) {
@@ -17,10 +17,10 @@ func TestFindPackage(t *testing.T) {
 	if resp.ActionID != "999" {
 		t.Errorf("demo actionID %s != 999", resp.ActionID)
 	}
-	if len(*resp.Main) != 2 {
+	if len((*resp.Container).Main) != 2 {
 		t.Error("api demo does not has request")
 	}
-	for _, field := range *resp.Main {
+	for _, field := range (*resp.Container).Main {
 		switch field.Name {
 		case "ID":
 			if field.Alias != "id" {
@@ -50,7 +50,7 @@ func TestInnerStruct(t *testing.T) {
 	if !ok {
 		t.Error("pkg3 does not in package")
 	}
-	for _, field := range *pkg.Main {
+	for _, field := range (*pkg.Container).Main {
 		switch field.Name {
 		case "FamilyID":
 			if field.Alias != "fid" {
@@ -59,7 +59,7 @@ func TestInnerStruct(t *testing.T) {
 		case "ChildInfo":
 			tname := fmt.Sprintf("%s", field.ValueType)
 			fmt.Print(tname)
-			resp, ok := (*pkg.Sub)[tname]
+			resp, ok := (*pkg.Container).Sub[tname]
 			if !ok {
 				t.Errorf("api demo does not find inner struct %s", tname)
 			}
@@ -72,4 +72,22 @@ func TestInnerStruct(t *testing.T) {
 	}
 }
 
-// // format md
+// format md
+
+func TestFormateAPI(t *testing.T) {
+	pkg, ok := FindPackage(pkgPath)["family"]
+	if !ok {
+		t.Error("api demo does not find pkg1")
+	}
+	txt := FormateAPI(pkg)
+	expected := `
+** 请求 **
+字段|类型|默认值|描述|
+---|---|---|---
+ID|string|-|-|
+	`
+	if txt != expected {
+		t.Error("request md is ", txt)
+	}
+
+}
