@@ -86,7 +86,7 @@ func TestFormateAPI(t *testing.T) {
 ---|---|---|---
 ID|string|-|-|
 	`
-	if txt != expected {
+	if txt.String() != expected {
 		t.Error("request md is ", txt)
 	}
 

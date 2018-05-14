@@ -5,13 +5,16 @@ package main
 
 import (
 	"bytes"
+	"flag"
 	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
 	"io/ioutil"
 	"log"
+	"os"
 	"path"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"text/template"
@@ -72,19 +75,55 @@ type APIDoc struct {
 	SubName    string
 }
 
+var i = flag.String("in", ".", "api directory to generate md file")
+var o = flag.String("out", "", "directory to save md file")
+
+// var
+
 func main() {
 	// find file path
-	fs := token.NewFileSet()
-	f, err := parser.ParseFile(fs, "pkg1/demo.go", nil, parser.ParseComments)
+	flag.Parse()
+	if *i == "" || *o == "" {
+		flag.Usage()
+		os.Exit(1)
+	}
+	out, err := filepath.Abs(*o)
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Printf("%q\n", f)
-	fmt.Printf("%s\n", f.Name)
+	input, err := filepath.Abs(*i)
+	if err != nil {
+		log.Fatal(err)
+	}
+	pkgs := FindPackage(input)
+	d, err := os.Stat(out)
+	if os.IsNotExist(err) {
+		// directory not exists
+		os.Mkdir(out, 0777)
+	} else if err == nil && !d.IsDir() {
+		// out is not directory
+		flag.Usage()
+		os.Exit(1)
+	}
+	for name, pkg := range pkgs {
+		savePath := filepath.Join(out, name+".md")
+		contents := FormateAPI(pkg)
+		// trunc file if savePath exists else create new file
+		file, err := os.OpenFile(savePath, os.O_WRONLY|os.O_TRUNC|os.O_CREATE, 0777)
+		defer file.Close()
+		if err != nil {
+			log.Fatal(err)
+		}
+		_, err = file.Write(contents.Bytes())
+		if err != nil {
+			log.Fatal(err)
+		}
+		file.Sync()
+	}
 }
 
 // FormateAPI generate request md file
-func FormateAPI(pkg *APIStruct) string {
+func FormateAPI(pkg *APIStruct) *bytes.Buffer {
 	var printActionType = func(apiType string) string {
 		if apiType == "req" {
 			return "请求"
@@ -116,7 +155,7 @@ func FormateAPI(pkg *APIStruct) string {
 	b.WriteString(fmt.Sprintf(s, pkg.ActionID, pkg.ActionDesc))
 	ParseField(pkg.Container, doc, "req", &b, true, "")
 	ParseField(pkg.Container, doc, "resp", &b, true, "")
-	return b.String()
+	return &b
 }
 
 // ParseField get each field of api
@@ -188,8 +227,6 @@ func FindPackage(pkgRoot string) map[string]*APIStruct {
 				continue
 			}
 			t := getSingleAction(actionID, pkg)
-			// fmt.Println("---------------------")
-			// fmt.Printf("%q\n", t)
 			api := new(APIStruct)
 			api.SetActionID(actionID)
 			api.Container = t
@@ -329,7 +366,7 @@ func getAllStruct(filePath string) (pkgName string, actionID string, allStruct [
 			if ok := IsActionID(structName); ok {
 				actionID = structName
 			}
-			fmt.Printf("\n==============\n%s \n", structName)
+			// fmt.Printf("\n==============\n%s \n", structName)
 			t = x.Type
 		default:
 			return true
