@@ -2,9 +2,11 @@ package pkg3
 
 // Demo2000 specify inner struct
 type Demo2000 struct {
-	FamilyID  string `dcapi:"req; alias:fid"`
-	Demo      string `dcapi:"resp"`
-	ChildInfo Child  `dcapi:"resp"`
+	FamilyID       string      `dcapi:"req; alias:fid"`
+	FID            []int       `dcapi:"resp; " `
+	Demo           string      `dcapi:"resp"`
+	ChildInfo      Child       `dcapi:"resp"`
+	MiracleTrigger interface{} `dcapi:"resp;alias:mt;"`
 }
 
 // Child child info

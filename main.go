@@ -35,8 +35,9 @@ const DocTemplate = `
 `
 
 type structType struct {
-	name string
-	node *ast.StructType
+	name    string
+	node    *ast.StructType
+	srcName string
 }
 
 // APIStruct describe api
@@ -110,7 +111,7 @@ func main() {
 		go func(name string, pkg *APIStruct) {
 			savePath := filepath.Join(out, name+".md")
 			contents := FormatAPI(pkg)
-			// trunc file if savePath exists else create new file
+			// truncate file if savePath exists else create new file
 			file, err := os.OpenFile(savePath, os.O_WRONLY|os.O_TRUNC|os.O_CREATE, 0777)
 			defer file.Close()
 			if err != nil {
@@ -238,7 +239,6 @@ func FindPackage(pkgRoot string) map[string]*APIStruct {
 			api := new(APIStruct)
 			api.SetActionID(actionID)
 			api.Container = t
-
 			api.PKGName = pkgName
 			resp[pkgName] = api
 		}
@@ -247,7 +247,7 @@ func FindPackage(pkgRoot string) map[string]*APIStruct {
 }
 
 // ParseTag get api field
-func (api *APIContainer) ParseTag(f *ast.Field, t string) {
+func (api *APIContainer) ParseTag(f *ast.Field, t string, typeName string) {
 	// t = "dcapi: \"xx; xx:xxx; ddd\""
 	if !api.IsValidTag(t) {
 		return
@@ -263,7 +263,7 @@ func (api *APIContainer) ParseTag(f *ast.Field, t string) {
 		// not such type
 		return
 	}
-	desc.ValueType = fmt.Sprintf("%s", f.Type)
+	desc.ValueType = typeName
 	desc.Name = f.Names[0].Name
 	for _, field := range fields {
 		field = strings.TrimSpace(field)
@@ -386,6 +386,7 @@ func getAllStruct(filePath string) (pkgName string, actionID string, allStruct [
 		s := new(structType)
 		s.name = structName
 		s.node = x
+		s.srcName = filePath
 		allStruct = append(allStruct, s)
 		return true
 	}
@@ -404,14 +405,17 @@ func getSingleAction(name string, structs []*structType) *APIContainer {
 			continue
 		}
 		dctag := GetTag(f.Tag.Value, TokenTag)
-		api.ParseTag(f, dctag)
-		typeName := fmt.Sprintf("%s", f.Type)
+		b, _ := ioutil.ReadFile(structs[index].srcName)
+		typeName := string(b)[f.Type.Pos()-1 : f.Type.End()-1]
+		api.ParseTag(f, dctag, typeName)
 		c := getSingleAction(typeName, structs)
 		if c != nil {
 			if api.Sub == nil {
 				api.Sub = make(map[string]*APIContainer, 0)
 			}
-			api.Sub[typeName] = c
+			//research struct
+			index = indexStruct(typeName, structs)
+			api.Sub[structs[index].name] = c
 		}
 	}
 	return api
@@ -420,7 +424,7 @@ func getSingleAction(name string, structs []*structType) *APIContainer {
 // indexStruct get the index of specified name in given structs
 func indexStruct(name string, s []*structType) int {
 	for i, t := range s {
-		if t.name == name {
+		if strings.Contains(name, t.name) {
 			return i
 		}
 	}
