@@ -106,24 +106,27 @@ func main() {
 		flag.Usage()
 		os.Exit(1)
 	}
+	fmt.Printf("%q", pkgs)
 	ch := make(chan struct{})
 	for name, pkg := range pkgs {
-		go func(name string, pkg *APIStruct) {
+		go func(name string, pkg *[]*APIStruct) {
 			savePath := filepath.Join(out, name+".md")
-			contents := FormatAPI(pkg)
 			// truncate file if savePath exists else create new file
 			file, err := os.OpenFile(savePath, os.O_WRONLY|os.O_TRUNC|os.O_CREATE, 0777)
-			defer file.Close()
 			if err != nil {
 				log.Fatal(err)
 			}
-			_, err = file.Write(contents.Bytes())
-			if err != nil {
-				log.Fatal(err)
+			defer file.Close()
+			for _, api := range *pkg {
+				contents := FormatAPI(api)
+				_, err = file.Write(contents.Bytes())
+				if err != nil {
+					log.Fatal(err)
+				}
 			}
 			file.Sync()
 			ch <- struct{}{}
-		}(name, pkg)
+		}(name, &pkg)
 	}
 
 	for range pkgs {
@@ -160,7 +163,7 @@ func FormatAPI(pkg *APIStruct) *bytes.Buffer {
 	role.ValueType = "string"
 	role.APIType = "req"
 	pkg.Container.Main = append(pkg.Container.Main, role)
-	s := "\n## %s %s"
+	s := "\n\n## %s %s"
 	b.WriteString(fmt.Sprintf(s, pkg.ActionID, pkg.ActionDesc))
 	ParseField(pkg.Container, doc, "req", &b, true, "")
 	ParseField(pkg.Container, doc, "resp", &b, true, "")
@@ -225,9 +228,9 @@ func ParseField(c *APIContainer, doc *template.Template, apiType string, b *byte
 }
 
 // FindPackage get all package with specified path
-func FindPackage(pkgRoot string) map[string]*APIStruct {
+func FindPackage(pkgRoot string) map[string][]*APIStruct {
 	dirs := ListDir(pkgRoot, true, true)
-	resp := make(map[string]*APIStruct, len(dirs))
+	resp := make(map[string][]*APIStruct, len(dirs))
 	for _, dir := range dirs {
 		files := ListDir(dir, true, false)
 		for _, file := range files {
@@ -240,7 +243,7 @@ func FindPackage(pkgRoot string) map[string]*APIStruct {
 			api.SetActionID(actionID)
 			api.Container = t
 			api.PKGName = pkgName
-			resp[pkgName] = api
+			resp[pkgName] = append(resp[pkgName], api)
 		}
 	}
 	return resp

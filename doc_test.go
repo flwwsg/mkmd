@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-var pkgPath = `D:\dev\go\src\mkmd`
+var pkgPath = `/home/lblue/dev/go/src/mkmd`
 
 // find all package
 func TestFindPackage(t *testing.T) {
@@ -14,13 +14,13 @@ func TestFindPackage(t *testing.T) {
 	if !err {
 		t.Error("can not find package `pkg1`")
 	}
-	if resp.ActionID != "999" {
-		t.Errorf("demo actionID %s != 999", resp.ActionID)
+	if resp[0].ActionID != "999" {
+		t.Errorf("demo actionID %s != 999", resp[0].ActionID)
 	}
-	if len((*resp.Container).Main) != 2 {
+	if len((*resp[0].Container).Main) != 2 {
 		t.Error("api demo does not has request")
 	}
-	for _, field := range (*resp.Container).Main {
+	for _, field := range (*resp[0].Container).Main {
 		switch field.Name {
 		case "ID":
 			if field.Alias != "id" {
@@ -50,7 +50,7 @@ func TestInnerStruct(t *testing.T) {
 	if !ok {
 		t.Error("pkg3 does not in package")
 	}
-	for _, field := range (*pkg.Container).Main {
+	for _, field := range (*pkg[0].Container).Main {
 		switch field.Name {
 		case "FamilyID":
 			if field.Alias != "fid" {
@@ -59,13 +59,16 @@ func TestInnerStruct(t *testing.T) {
 		case "ChildInfo":
 			tname := fmt.Sprintf("%s", field.ValueType)
 			fmt.Print(tname)
-			resp, ok := (*pkg.Container).Sub[tname]
+			resp, ok := (*pkg[0].Container).Sub[tname]
 			if !ok {
 				t.Errorf("api demo does not find inner struct %s", tname)
 			}
-			if resp.Sub != nil {
+			if resp.Sub == nil {
 				t.Errorf("api's inner struct %s has bad inner struct", tname)
 			}
+		case "FID":
+		case "MiracleTrigger":
+		case "Demo":
 		default:
 			t.Errorf("api demo has bad field %s", field.Name)
 		}
@@ -79,7 +82,7 @@ func TestFormateAPI(t *testing.T) {
 	if !ok {
 		t.Error("api demo does not find pkg1")
 	}
-	txt := FormateAPI(pkg)
+	txt := FormatAPI(pkg[0])
 	expected := `
 ** 请求 **
 字段|类型|默认值|描述|
