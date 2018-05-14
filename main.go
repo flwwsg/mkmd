@@ -105,20 +105,28 @@ func main() {
 		flag.Usage()
 		os.Exit(1)
 	}
+	ch := make(chan struct{})
 	for name, pkg := range pkgs {
-		savePath := filepath.Join(out, name+".md")
-		contents := FormateAPI(pkg)
-		// trunc file if savePath exists else create new file
-		file, err := os.OpenFile(savePath, os.O_WRONLY|os.O_TRUNC|os.O_CREATE, 0777)
-		defer file.Close()
-		if err != nil {
-			log.Fatal(err)
-		}
-		_, err = file.Write(contents.Bytes())
-		if err != nil {
-			log.Fatal(err)
-		}
-		file.Sync()
+		go func(name string, pkg *APIStruct) {
+			savePath := filepath.Join(out, name+".md")
+			contents := FormateAPI(pkg)
+			// trunc file if savePath exists else create new file
+			file, err := os.OpenFile(savePath, os.O_WRONLY|os.O_TRUNC|os.O_CREATE, 0777)
+			defer file.Close()
+			if err != nil {
+				log.Fatal(err)
+			}
+			_, err = file.Write(contents.Bytes())
+			if err != nil {
+				log.Fatal(err)
+			}
+			file.Sync()
+			ch <- struct{}{}
+		}(name, pkg)
+	}
+
+	for range pkgs {
+		<-ch
 	}
 }
 
