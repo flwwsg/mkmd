@@ -106,7 +106,6 @@ func main() {
 		flag.Usage()
 		os.Exit(1)
 	}
-	fmt.Printf("%q", pkgs)
 	ch := make(chan struct{})
 	for name, pkg := range pkgs {
 		go func(name string, pkg *[]*APIStruct) {
@@ -163,10 +162,11 @@ func FormatAPI(pkg *APIStruct) *bytes.Buffer {
 	role.ValueType = "string"
 	role.APIType = "req"
 	pkg.Container.Main = append(pkg.Container.Main, role)
-	s := "\n\n## %s %s"
+	s := "\n## %s %s"
 	b.WriteString(fmt.Sprintf(s, pkg.ActionID, pkg.ActionDesc))
 	ParseField(pkg.Container, doc, "req", &b, true, "")
 	ParseField(pkg.Container, doc, "resp", &b, true, "")
+	b.WriteString("\n")
 	return &b
 }
 
