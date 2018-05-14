@@ -39,7 +39,7 @@ type structType struct {
 	node *ast.StructType
 }
 
-// APIStruct descript api
+// APIStruct describe api
 type APIStruct struct {
 	PKGName    string
 	ActionID   string
@@ -109,7 +109,7 @@ func main() {
 	for name, pkg := range pkgs {
 		go func(name string, pkg *APIStruct) {
 			savePath := filepath.Join(out, name+".md")
-			contents := FormateAPI(pkg)
+			contents := FormatAPI(pkg)
 			// trunc file if savePath exists else create new file
 			file, err := os.OpenFile(savePath, os.O_WRONLY|os.O_TRUNC|os.O_CREATE, 0777)
 			defer file.Close()
@@ -130,8 +130,8 @@ func main() {
 	}
 }
 
-// FormateAPI generate request md file
-func FormateAPI(pkg *APIStruct) *bytes.Buffer {
+// FormatAPI generate request md file
+func FormatAPI(pkg *APIStruct) *bytes.Buffer {
 	var printActionType = func(apiType string) string {
 		if apiType == "req" {
 			return "请求"
