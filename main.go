@@ -34,12 +34,6 @@ const DocTemplate = `
 {{- .Name}} | {{.ValueType | printf "%s" }} | {{.Default }} | {{ .Desc | printDesc -}}
 `
 
-type structType struct {
-	name    string
-	node    *ast.StructType
-	srcName string
-}
-
 // APIStruct describe api
 type APIStruct struct {
 	PKGName    string
@@ -377,7 +371,6 @@ func getAllStruct(filePath string) (pkgName string, actionID string, allStruct [
 			if ok := IsActionID(structName); ok {
 				actionID = structName
 			}
-			// fmt.Printf("\n==============\n%s \n", structName)
 			t = x.Type
 		default:
 			return true

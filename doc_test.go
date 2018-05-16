@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-var pkgPath = `/home/lblue/dev/go/src/mkmd`
+var pkgPath = `d:/dev/go/src/mkmd`
 
 // find all package
 func TestFindPackage(t *testing.T) {

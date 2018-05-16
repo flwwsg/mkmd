@@ -4,4 +4,7 @@ package pkg1
 type Demo999 struct {
 	ID     string `dcapi:"req; alias:id;" json:"-"`
 	Number int    `dcapi:"resp"`
+	Demo   int64  `dcapi:"resp"`
+	RID    string `dcapi:"req; def:rid12"`
+	ID2 string `dcapi:"resp"`
 }
