@@ -21,7 +21,3 @@ type Age struct {
 	Year string `dcapi:"resp"`
 	Day  string `dcapi:"resp"`
 }
-
-type Demo3 struct {
-
-}

@@ -2,38 +2,71 @@ package main
 
 import (
 	"bytes"
+	"flag"
 	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
 	"io/ioutil"
 	"log"
+	"os"
+	"path"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"text/template"
 )
 
+// TokenTag tag name
+const TokenTag = "dcapi"
+
 // APITemplate template of md
 const APITemplate = `
 ## {{.ActionID}} {{.ActionDesc}}
 
-** {{.APIType}} **
+** 请求 **
 
 字段|类型|默认值|描述|
 ---|---|---|---
 {{range $i, $f := .Fields}}
-{{- $f.Name}} | {{$f.ValueType | printf "%s" }} | {{$f.Default | printDefault }} | {{ $f.Desc | printDesc -}}
-{{end}}
+{{- if eq $f.APIType "req"}}
+{{- $f.Name}} | {{$f.ValueType | printf "%s" }} | {{printDefault  $f.Default}} | {{printDesc $f.Desc }}
+{{end -}}
+{{end -}}
 
-{{range $i, $typ := .Types}}
+{{range $i, $typ := .ReqTypes}}
 
-** {{$typ.name}} **
+** {{$typ.Name}} **
 
 字段|类型|默认值|描述|
 ---|---|---|---
-{{range $i, $f := $typ.fields}}
-{{- $f.Name}} | {{$f.ValueType | printf "%s" }} | {{$f.Default | printDefault }} | {{ $f.Desc | printDesc -}}
+{{range $i, $f := $typ.Fields}}
+{{- if eq $f.APIType "req"}}
+{{- $f.Name}} | {{$f.ValueType | printf "%s" }} | {{printDefault $f.Default}} | {{ printDesc $f.Desc }}
+{{end -}}
+{{end -}}
 {{end}}
+
+** 响应 **
+
+字段|类型|默认值|描述|
+---|---|---|---
+{{range $i, $f := .Fields}}
+{{- if eq $f.APIType "resp"}}
+{{- $f.Name}} | {{$f.ValueType | printf "%s" }} | {{printDefault  $f.Default}} | {{printDesc $f.Desc }}
+{{end -}}
+{{end -}}
+{{range $i, $typ := .RespTypes}}
+
+** {{$typ.Name}} **
+
+字段|类型|默认值|描述|
+---|---|---|---
+{{range $i, $f := $typ.Fields}}
+{{- if eq $f.APIType "resp"}}
+{{- $f.Name}} | {{$f.ValueType | printf "%s" }} | {{printDefault $f.Default}} | {{ printDesc $f.Desc }}
+{{end -}}
+{{end -}}
 {{end}}
 `
 
@@ -52,35 +85,90 @@ type SingleAPI struct {
 	ActionID   string
 	ActionDesc string
 	// structs has being used
-	Types   []*structType
-	Fields  *[]*APIField
-	APIType string
+	ReqTypes  []*StructType
+	RespTypes []*StructType
+	Fields    *[]*APIField
 }
 
-type structType struct {
-	name    string
-	node    *ast.StructType
-	srcName string
-	fields  []*APIField
+type StructType struct {
+	Name   string
+	Fields []*APIField
 }
 
-func (s *structType) isActionID() bool {
+var i = flag.String("in", ".", "api directory to generate md file")
+var o = flag.String("out", "", "directory to save md file")
+
+func main() {
+	// find file path
+	flag.Parse()
+	if *i == "" || *o == "" {
+		flag.Usage()
+		os.Exit(1)
+	}
+	out, err := filepath.Abs(*o)
+	if err != nil {
+		log.Fatal(err)
+	}
+	input, err := filepath.Abs(*i)
+	if err != nil {
+		log.Fatal(err)
+	}
+	pkgs := pkgStructs(input)
+	d, err := os.Stat(out)
+	if os.IsNotExist(err) {
+		// directory not exists
+		os.Mkdir(out, 0777)
+	} else if err == nil && !d.IsDir() {
+		// out is not directory
+		flag.Usage()
+		os.Exit(1)
+	}
+	ch := make(chan struct{})
+	for name, pkg := range pkgs {
+		go func(name string, pkg map[string]*StructType) {
+			savePath := filepath.Join(out, name+".md")
+			// truncate file if savePath exists else create new file
+			file, err := os.OpenFile(savePath, os.O_WRONLY|os.O_TRUNC|os.O_CREATE, 0777)
+			if err != nil {
+				log.Fatal(err)
+			}
+			defer file.Close()
+			acts := GenAPI(&pkg)
+			for _, act := range acts {
+				b := FormatSingleAPI(act)
+				//fmt.Println(b.String())
+				_, err = file.Write(b.Bytes())
+				if err != nil {
+					log.Fatal(err)
+				}
+			}
+			file.Sync()
+			ch <- struct{}{}
+		}(name, pkg)
+	}
+
+	for range pkgs {
+		<-ch
+	}
+}
+
+func (s *StructType) isActionID() bool {
 	re := regexp.MustCompile("[0-9]+")
-	res := re.FindAllString(s.name, -1)
+	res := re.FindAllString(s.Name, -1)
 	if len(res) == 1 {
 		return true
 	}
 	return false
 }
 
-func (s *structType) isType(typeName string) bool {
-	if strings.Contains(typeName, s.name) {
+func (s *StructType) isType(typeName string) bool {
+	if strings.Contains(typeName, s.Name) {
 		return true
 	}
 	return false
 }
 
-//SetActionID get action id from specified action name
+//SetActionID get action id from specified action Name
 func (api *SingleAPI) SetActionID(name string) {
 	re := regexp.MustCompile("[0-9]+")
 	res := re.FindAllString(name, -1)
@@ -136,8 +224,8 @@ func (field *APIField) ParseTag(f *ast.Field, t string, typeName string) {
 	}
 }
 
-// FormatSingleAPI generat a single api markdown file
-func FormatSingleAPI(api *SingleAPI) {
+// FormatSingleAPI generate a single api markdown file
+func FormatSingleAPI(api *SingleAPI) *bytes.Buffer {
 	var printDesc = func(desc string) string {
 		if desc == "" {
 			return "无"
@@ -163,28 +251,31 @@ func FormatSingleAPI(api *SingleAPI) {
 			panic(fmt.Sprintf("%s does not support yet", t))
 		}
 	}
-	apiType := "请求"
-	api.APIType = apiType
+	if len(*api.Fields) == 0 {
+		t := &APIField{"无", "无", "无", "无", "无", "req"}
+		*api.Fields = append(*api.Fields, t)
+	}
 	doc, err := template.New("request").Funcs(template.FuncMap{"printDesc": printDesc, "printDefault": printDefault}).
 		Parse(APITemplate)
 	if err != nil {
 		log.Fatal(err)
 	}
-	var b bytes.Buffer
-	doc.Execute(&b, api)
-	fmt.Print(b.String())
+	b := new(bytes.Buffer)
+	doc.Execute(b, api)
+	//fmt.Print(b.String())
+	return b
 }
 
 //GenAPI generating single api with actionID
-func GenAPI(pkg *map[string]*structType) []*SingleAPI {
+func GenAPI(pkg *map[string]*StructType) []*SingleAPI {
 	apiList := make([]*SingleAPI, 0)
 	for name, st := range *pkg {
 		if st.isActionID() {
 			api := new(SingleAPI)
 			api.SetActionID(name)
-			api.Fields = &st.fields
+			api.Fields = &st.Fields
 			for _, field := range *api.Fields {
-				GetCustomTypes(api, field.ValueType, pkg)
+				GetCustomTypes(api, field, pkg)
 			}
 			apiList = append(apiList, api)
 		}
@@ -193,19 +284,25 @@ func GenAPI(pkg *map[string]*structType) []*SingleAPI {
 }
 
 // GetCustomTypes find custom struct type in api using deep search
-func GetCustomTypes(api *SingleAPI, typeName string, pkg *map[string]*structType) {
+func GetCustomTypes(api *SingleAPI, field *APIField, pkg *map[string]*StructType) {
+	typeName := field.ValueType
 	if s := findTypeStruct(typeName, pkg); s != nil {
-		api.Types = append(api.Types, s)
-		for _, field := range s.fields {
-			GetCustomTypes(api, field.ValueType, pkg)
+		if field.APIType == "req" {
+			api.ReqTypes = append(api.ReqTypes, s)
+		}
+		if field.APIType == "resp" {
+			api.RespTypes = append(api.RespTypes, s)
+		}
+		for _, field := range s.Fields {
+			GetCustomTypes(api, field, pkg)
 		}
 	}
 }
 
 // pkgStructs collect struct from giving package path
-func pkgStructs(srcPath string) map[string]map[string]*structType {
+func pkgStructs(srcPath string) map[string]map[string]*StructType {
 	dirs := ListDir(srcPath, true, true)
-	resp := make(map[string]map[string]*structType, len(dirs))
+	resp := make(map[string]map[string]*StructType, len(dirs))
 	for _, dir := range dirs {
 		files := ListDir(dir, true, false)
 		for _, file := range files {
@@ -214,7 +311,7 @@ func pkgStructs(srcPath string) map[string]map[string]*structType {
 				continue
 			}
 			if resp[pkgName] == nil {
-				resp[pkgName] = make(map[string]*structType)
+				resp[pkgName] = make(map[string]*StructType)
 			}
 			for k, v := range pkg {
 				resp[pkgName][k] = v
@@ -224,8 +321,8 @@ func pkgStructs(srcPath string) map[string]map[string]*structType {
 	return resp
 }
 
-func collectStructs(srcPath string) (string, map[string]*structType) {
-	allStruct := make(map[string]*structType, 0)
+func collectStructs(srcPath string) (string, map[string]*StructType) {
+	allStruct := make(map[string]*StructType, 0)
 	if !strings.HasSuffix(srcPath, "go") {
 		return "", allStruct
 	}
@@ -251,9 +348,9 @@ func collectStructs(srcPath string) (string, map[string]*structType) {
 		if !ok {
 			return true
 		}
-		s := new(structType)
-		s.name = structName
-		s.fields = genField(x, srcPath)
+		s := new(StructType)
+		s.Name = structName
+		s.Fields = genField(x, srcPath)
 		allStruct[structName] = s
 		return true
 	}
@@ -263,8 +360,8 @@ func collectStructs(srcPath string) (string, map[string]*structType) {
 
 func genField(node *ast.StructType, srcPath string) []*APIField {
 	b, _ := ioutil.ReadFile(srcPath)
-	field := make([]*APIField, len(node.Fields.List))
-	for i, f := range node.Fields.List {
+	field := make([]*APIField, 0)
+	for _, f := range node.Fields.List {
 		newField := new(APIField)
 		//ignore invalid tag
 		if f.Tag == nil || !strings.Contains(f.Tag.Value, TokenTag) {
@@ -273,18 +370,62 @@ func genField(node *ast.StructType, srcPath string) []*APIField {
 		dctag := GetTag(f.Tag.Value, TokenTag)
 		typeName := string(b)[f.Type.Pos()-1 : f.Type.End()-1]
 		newField.ParseTag(f, dctag, typeName)
-		field[i] = newField
+		field = append(field, newField)
 	}
 	return field
 }
 
 //helper function
 
-func findTypeStruct(name string, pkg *map[string]*structType) *structType {
+func findTypeStruct(name string, pkg *map[string]*StructType) *StructType {
 	for _, s := range *pkg {
 		if s.isType(name) {
 			return s
 		}
 	}
 	return nil
+}
+
+// ListDir list directories and files in fpath
+func ListDir(fpath string, fullPath bool, listDir bool) []string {
+	files, err := ioutil.ReadDir(fpath)
+	dirs := make([]string, 0)
+	fileName := ""
+	if err != nil {
+		log.Printf("list error path %s", fpath)
+		log.Fatal(err)
+	}
+	for _, f := range files {
+		if fullPath {
+			fileName = path.Join(fpath, f.Name())
+		} else {
+			fileName = f.Name()
+		}
+		if f.IsDir() == listDir {
+			dirs = append(dirs, fileName)
+		}
+	}
+	return dirs
+}
+
+// IsActionID check given name is action id or not
+func IsActionID(name string) bool {
+	re := regexp.MustCompile("[0-9]+")
+	res := re.FindAllString(name, -1)
+	if len(res) == 1 {
+		return true
+	}
+	return false
+}
+
+// GetTag find tag with specified token
+func GetTag(t string, tk string) string {
+	// tag = "`dcapi:"ass:xxx; sss""
+	dcStart := strings.Index(t, tk)
+	firstQ := strings.Index(t[dcStart:], `"`)
+	dcEnd := strings.Index(t[dcStart+firstQ+1:], `"`)
+	if dcEnd != -1 && dcStart != -1 {
+		return t[dcStart : dcStart+firstQ+dcEnd+2]
+	}
+	return ""
 }
