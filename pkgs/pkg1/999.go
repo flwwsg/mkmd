@@ -6,5 +6,5 @@ type Demo999 struct {
 	Number int    `dcapi:"resp"`
 	Demo   int64  `dcapi:"resp"`
 	RID    string `dcapi:"req; def:rid12"`
-	ID2 string `dcapi:"resp"`
+	ID2    string `dcapi:"resp"`
 }
