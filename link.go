@@ -90,6 +90,7 @@ type SingleAPI struct {
 	Fields    *[]*APIField
 }
 
+// StructType recording struct
 type StructType struct {
 	Name   string
 	Fields []*APIField
