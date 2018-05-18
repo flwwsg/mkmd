@@ -30,7 +30,7 @@ const APITemplate = `
 ---|---|---|---
 {{range $i, $f := .Fields}}
 {{- if eq $f.APIType "req"}}
-{{- $f.Name}} | {{$f.ValueType | printf "%s" }} | {{printDefault  $f.Default}} | {{printDesc $f.Desc }}
+{{- $f.Alias}} | {{$f.ValueType | printf "%s" }} | {{printDefault  $f.Default}} | {{printDesc $f.Desc }}
 {{end -}}
 {{end -}}
 
@@ -42,7 +42,7 @@ const APITemplate = `
 ---|---|---|---
 {{range $i, $f := $typ.Fields}}
 {{- if eq $f.APIType "req"}}
-{{- $f.Name}} | {{$f.ValueType | printf "%s" }} | {{printDefault $f.Default}} | {{ printDesc $f.Desc }}
+{{- $f.Alias}} | {{$f.ValueType | printf "%s" }} | {{printDefault $f.Default}} | {{ printDesc $f.Desc }}
 {{end -}}
 {{end -}}
 {{end}}
@@ -53,7 +53,7 @@ const APITemplate = `
 ---|---|---|---
 {{range $i, $f := .Fields}}
 {{- if eq $f.APIType "resp"}}
-{{- $f.Name}} | {{$f.ValueType | printf "%s" }} | {{printDefault  $f.Default}} | {{printDesc $f.Desc }}
+{{- $f.Alias}} | {{$f.ValueType | printf "%s" }} | {{printDefault  $f.Default}} | {{printDesc $f.Desc }}
 {{end -}}
 {{end -}}
 {{range $i, $typ := .RespTypes}}
@@ -64,7 +64,7 @@ const APITemplate = `
 ---|---|---|---
 {{range $i, $f := $typ.Fields}}
 {{- if eq $f.APIType "resp"}}
-{{- $f.Name}} | {{$f.ValueType | printf "%s" }} | {{printDefault $f.Default}} | {{ printDesc $f.Desc }}
+{{- $f.Alias}} | {{$f.ValueType | printf "%s" }} | {{printDefault $f.Default}} | {{ printDesc $f.Desc }}
 {{end -}}
 {{end -}}
 {{end}}
@@ -207,6 +207,9 @@ func (field *APIField) ParseTag(f *ast.Field, t string, typeName string) {
 	field.Name = f.Names[0].Name
 	for _, f := range fields {
 		f = strings.TrimSpace(f)
+		if f == "" {
+			continue
+		}
 		tag := strings.Split(f, ":")
 		switch tag[0] {
 		case "alias":
@@ -221,7 +224,13 @@ func (field *APIField) ParseTag(f *ast.Field, t string, typeName string) {
 			if len(tag) > 1 {
 				field.Default = tag[1]
 			}
+		case "req", "resp":
+		default:
+			panic(fmt.Sprintf("tag %s does not supported", tag[0]))
 		}
+	}
+	if field.Alias == "" {
+		field.Alias = field.Name
 	}
 }
 
