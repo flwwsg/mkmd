@@ -261,7 +261,7 @@ func FormatSingleAPI(api *SingleAPI) *bytes.Buffer {
 			panic(fmt.Sprintf("%s does not support yet", t))
 		}
 	}
-	if len(*api.Fields) == 0 {
+	if len(api.ReqTypes) == 0 {
 		t := &APIField{"无", "无", "无", "无", "无", "req"}
 		*api.Fields = append(*api.Fields, t)
 	}
