@@ -261,10 +261,10 @@ func FormatSingleAPI(api *SingleAPI) *bytes.Buffer {
 			panic(fmt.Sprintf("%s does not support yet", t))
 		}
 	}
-	if len(api.ReqTypes) == 0 {
-		t := &APIField{"无", "无", "无", "无", "无", "req"}
-		*api.Fields = append(*api.Fields, t)
-	}
+	//if len(api.ReqTypes) == 0 {
+	//	t := &APIField{"无", "无", "无", "无", "无", "req"}
+	//	*api.Fields = append(*api.Fields, t)
+	//}
 	doc, err := template.New("request").Funcs(template.FuncMap{"printDesc": printDesc, "printDefault": printDefault}).
 		Parse(APITemplate)
 	if err != nil {
