@@ -96,61 +96,34 @@ type StructType struct {
 	Fields []*APIField
 }
 
-var i = flag.String("in", ".", "api directory to generate md file")
-var o = flag.String("out", "", "directory to save md file")
+var i = flag.String("in", "", "api directory to generate md file")
 
 func main() {
 	// find file path
 	flag.Parse()
-	if *i == "" || *o == "" {
+	if *i == "" {
 		flag.Usage()
 		os.Exit(1)
 	}
-	out, err := filepath.Abs(*o)
-	if err != nil {
-		log.Fatal(err)
-	}
-	input, err := filepath.Abs(*i)
-	if err != nil {
-		log.Fatal(err)
-	}
-	pkgs := pkgStructs(input)
-	d, err := os.Stat(out)
-	if os.IsNotExist(err) {
-		// directory not exists
-		os.Mkdir(out, 0777)
-	} else if err == nil && !d.IsDir() {
-		// out is not directory
-		flag.Usage()
-		os.Exit(1)
-	}
-	ch := make(chan struct{})
-	for name, pkg := range pkgs {
-		go func(name string, pkg map[string]*StructType) {
-			savePath := filepath.Join(out, name+".md")
-			// truncate file if savePath exists else create new file
-			file, err := os.OpenFile(savePath, os.O_WRONLY|os.O_TRUNC|os.O_CREATE, 0777)
-			if err != nil {
-				log.Fatal(err)
-			}
-			defer file.Close()
-			acts := GenAPI(&pkg)
-			for _, act := range acts {
-				b := FormatSingleAPI(act)
-				//fmt.Println(b.String())
-				_, err = file.Write(b.Bytes())
-				if err != nil {
-					log.Fatal(err)
-				}
-			}
-			file.Sync()
-			ch <- struct{}{}
-		}(name, pkg)
-	}
+	GenDoc(*i)
+}
 
-	for range pkgs {
-		<-ch
+//GenDoc generating api file
+func GenDoc(apiPath string) string{
+	input, err := filepath.Abs(apiPath)
+	if err != nil {
+		log.Fatal(err)
 	}
+	_, structs := pkgStructs(input)
+	acts := GenAPI(&structs)
+	rtn := make([]string, len(structs))
+	for _, act := range acts {
+		b := FormatSingleAPI(act)
+		rtn = append(rtn, b.String())
+	}
+	s := strings.Join(rtn, "")
+	fmt.Println(s)
+	return s
 }
 
 func (s *StructType) isActionID() bool {
@@ -261,10 +234,6 @@ func FormatSingleAPI(api *SingleAPI) *bytes.Buffer {
 			panic(fmt.Sprintf("%s does not support yet", t))
 		}
 	}
-	//if len(api.ReqTypes) == 0 {
-	//	t := &APIField{"无", "无", "无", "无", "无", "req"}
-	//	*api.Fields = append(*api.Fields, t)
-	//}
 	doc, err := template.New("request").Funcs(template.FuncMap{"printDesc": printDesc, "printDefault": printDefault}).
 		Parse(APITemplate)
 	if err != nil {
@@ -310,25 +279,21 @@ func GetCustomTypes(api *SingleAPI, field *APIField, pkg *map[string]*StructType
 }
 
 // pkgStructs collect struct from giving package path
-func pkgStructs(srcPath string) map[string]map[string]*StructType {
-	dirs := ListDir(srcPath, true, true)
-	resp := make(map[string]map[string]*StructType, len(dirs))
-	for _, dir := range dirs {
-		files := ListDir(dir, true, false)
-		for _, file := range files {
-			pkgName, pkg := collectStructs(file)
-			if len(pkg) < 1 {
-				continue
-			}
-			if resp[pkgName] == nil {
-				resp[pkgName] = make(map[string]*StructType)
-			}
-			for k, v := range pkg {
-				resp[pkgName][k] = v
-			}
+func pkgStructs(pkgPath string)(string, map[string]*StructType) {
+	resp := make(map[string]*StructType)
+	files := ListDir(pkgPath, true, false)
+	pkgName := ""
+	for _, file := range files {
+		name, pkg := collectStructs(file)
+		if len(pkg) < 1 {
+			continue
 		}
+		for k, v := range pkg {
+			resp[k] = v
+		}
+		pkgName = name
 	}
-	return resp
+	return pkgName, resp
 }
 
 func collectStructs(srcPath string) (string, map[string]*StructType) {
