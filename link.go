@@ -24,41 +24,43 @@ const TokenTag = "valid"
 const APITemplate = `
 ## {{.ActionID}} {{.ActionDesc}}
 
-** 请求 **
+### 自定义数据类型
 
-字段|类型|是否必需|描述|
----|---|---|---
-{{range $i, $f := .ReqFields}}
-{{- $f.Alias}} | {{$f.ValueType | printf "%s" }} | {{printNeed $f.Required}} | {{printDesc $f.Desc }}
-{{end -}}
-{{range $i, $typ := .ReqTypes}}
-
-** {{$typ.Name}} **
-
-字段|类型|是否必需|描述|
----|---|---|---
+{{ range $i, $typ := .ReqTypes}}
+#### {{$typ.Name}}
+字段|类型|描述|
+---|---|---
 {{range $i, $f := $typ.Fields}}
-{{- $f.Alias}} | {{$f.ValueType | printf "%s" }} | {{printNeed $f.Required}} | {{printDesc $f.Desc }}
+{{- $f.Alias}} | {{$f.ValueType | printf "%s" }} | {{printDesc $f.Desc }}
+{{end -}}
+{{end -}}
+
+{{range $i, $typ := .RespTypes}}
+
+#### {{$typ.Name}}
+
+字段|类型|描述|
+---|---|---
+{{range $i, $f := $typ.Fields}}
+{{- $f.Alias}} | {{$f.ValueType | printf "%s" }} | {{printDesc $f.Desc }}
 {{end -}}
 {{end}}
 
-** 响应 **
+#### 请求
+
+字段|类型|描述|
+---|---|---|---
+{{range $i, $f := .ReqFields}}
+{{- $f.Alias}} | {{$f.ValueType | printf "%s" }}| {{printDesc $f.Desc }}
+{{end -}}
+
+#### 响应
 
 字段|类型|描述|
 ---|---|---
 {{range $i, $f := .RespFields}}
 {{- $f.Alias}} | {{$f.ValueType | printf "%s" }} | {{printDesc $f.Desc }}
 {{end -}}
-{{range $i, $typ := .RespTypes}}
-
-** {{$typ.Name}} **
-
-字段|类型|描述|
----|---|---
-{{range $i, $f := $typ.Fields}}
-{{- $f.Alias}} | {{$f.ValueType | printf "%s" }} | {{printDesc $f.Desc }}
-{{end -}}
-{{end}}
 `
 
 // APIField each field of an api
