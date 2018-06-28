@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"text/template"
 )
@@ -133,18 +134,22 @@ func GenDoc(apiPath string) string {
 	_, structs := pkgStructs(input)
 	req, resp := GenAPI(&structs)
 	rtn := make([]string, len(resp))
-	idx := make([]string, len(resp))
+	idx := make([]int, len(resp))
 	for i, api := range resp {
-		idx[i] = api.ActionID
+		n, err := strconv.Atoi(api.ActionID)
+		if err != nil {
+			log.Fatal(err)
+		}
+		idx[i] = n
 	}
-	sort.Strings(idx)
+	sort.Ints(idx)
 	for _, aid := range idx {
 		for _, respAPI := range resp {
-			if respAPI.ActionID == aid {
+			if respAPI.ActionID == strconv.Itoa(aid) {
 				//find request struct
 				find := new(ReqAPI)
 				for _, reqAPI := range req {
-					if reqAPI.ActionID == aid {
+					if reqAPI.ActionID == strconv.Itoa(aid) {
 						find = reqAPI
 						break
 					}
