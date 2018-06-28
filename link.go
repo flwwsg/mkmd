@@ -8,6 +8,7 @@ import (
 	"go/token"
 	"io/ioutil"
 	"log"
+	"os"
 	"path"
 	"path/filepath"
 	"regexp"
@@ -113,12 +114,12 @@ var i = flag.String("in", "", "api directory to generate md file")
 
 func main() {
 	//find file path
-	//flag.Parse()
-	//if *i == "" {
-	//	flag.Usage()
-	//	os.Exit(1)
-	//}
-	println(GenDoc("./pkg2"))
+	flag.Parse()
+	if *i == "" {
+		flag.Usage()
+		os.Exit(1)
+	}
+	println(GenDoc(*i))
 }
 
 //GenDoc generating api file
