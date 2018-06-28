@@ -53,7 +53,7 @@ const APITemplate = `
 ---|---|---|---
 {{range $i, $f := .ReqFields}}
 {{- $f.Alias}} | {{$f.ValueType | printf "%s" }}| {{printDesc $f.Desc }}
-{{end -}}
+{{end }}
 
 #### 响应
 
