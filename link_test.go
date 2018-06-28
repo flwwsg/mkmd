@@ -1,3 +1,3 @@
 package main
 
-var pkgPath = "."
+//var pkgRoot = "."

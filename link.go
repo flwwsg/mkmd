@@ -3,13 +3,11 @@ package main
 import (
 	"bytes"
 	"flag"
-	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
 	"io/ioutil"
 	"log"
-	"os"
 	"path"
 	"path/filepath"
 	"regexp"
@@ -66,8 +64,7 @@ const APITemplate = `
 type APIField struct {
 	Name string
 	//display name
-	Alias string
-	//Default   interface{}
+	Alias     string
 	ValueType string
 	Desc      string
 	Required  bool
@@ -83,6 +80,7 @@ type SingleAPI struct {
 	RespFields *[]*APIField
 }
 
+// ReqAPI request part of api
 type ReqAPI struct {
 	CustomTypes []*StructType
 	ActionID    string
@@ -90,6 +88,7 @@ type ReqAPI struct {
 	Fields      *[]*APIField
 }
 
+// RespAPI resp part of api
 type RespAPI struct {
 	CustomTypes []*StructType
 	ActionID    string
@@ -105,6 +104,7 @@ type StructType struct {
 	Desc     string
 }
 
+// CustomTypes diy type
 type CustomTypes interface {
 	AddTypes(structType *StructType)
 }
@@ -112,13 +112,13 @@ type CustomTypes interface {
 var i = flag.String("in", "", "api directory to generate md file")
 
 func main() {
-	// find file path
-	flag.Parse()
-	if *i == "" {
-		flag.Usage()
-		os.Exit(1)
-	}
-	GenDoc(*i)
+	//find file path
+	//flag.Parse()
+	//if *i == "" {
+	//	flag.Usage()
+	//	os.Exit(1)
+	//}
+	println(GenDoc("./pkg2"))
 }
 
 //GenDoc generating api file
@@ -127,16 +127,12 @@ func GenDoc(apiPath string) string {
 	if err != nil {
 		log.Fatal(err)
 	}
-	pkgName, structs := pkgStructs(input)
-	fmt.Printf("%v\n", pkgName)
-	fmt.Printf("%v\n", structs)
+	_, structs := pkgStructs(input)
 	req, resp := GenAPI(&structs)
-	fmt.Println("===============")
-	fmt.Printf("%v, %v\n", req, resp)
 	rtn := make([]string, len(resp))
 	idx := make([]string, len(resp))
-	for _, api := range resp {
-		idx = append(idx, api.ActionID)
+	for i, api := range resp {
+		idx[i] = api.ActionID
 	}
 	sort.Strings(idx)
 	for _, aid := range idx {
@@ -157,7 +153,6 @@ func GenDoc(apiPath string) string {
 
 	}
 	s := strings.Join(rtn, "")
-	fmt.Println(s)
 	return s
 }
 
@@ -192,20 +187,24 @@ func (s *StructType) isType(typeName string) bool {
 	return false
 }
 
+func (s *StructType) setDesc(comm string) {
+	//drop struct name
+	desc := strings.Replace(comm, s.Name, "", 1)
+	s.Desc = strings.TrimSpace(desc)
+}
+
 //AddTypes append custom types
 func (req *ReqAPI) AddTypes(s *StructType) {
 	req.CustomTypes = append(req.CustomTypes, s)
 }
 
+// AddTypes add custom types
 func (resp *RespAPI) AddTypes(s *StructType) {
 	resp.CustomTypes = append(resp.CustomTypes, s)
 }
 
 // IsValidTag check tag is valid or not
 func (field *APIField) IsValidTag(t string) bool {
-	if strings.Contains(t, "skip") {
-		return false
-	}
 	if strings.Contains(t, "-") {
 		return false
 	}
@@ -220,8 +219,6 @@ func (field *APIField) ParseTag(f *ast.Field, t string) {
 	}
 	t = t[strings.Index(t, "\"")+1 : strings.LastIndex(t, "\"")]
 	fields := strings.Split(t, ",")
-	//field.ValueType = typeName
-	//field.Name = f.Names[0].Name
 	field.Required = false
 	for _, f := range fields {
 		f = strings.TrimSpace(f)
@@ -253,27 +250,9 @@ func FormatSingleAPI(req *ReqAPI, resp *RespAPI) *bytes.Buffer {
 		return "否"
 
 	}
-	//var printDefault = func(defValue interface{}) string {
-	//	switch t := defValue.(type) {
-	//	case string:
-	//		if defValue.(string) == "" {
-	//			return "无"
-	//		}
-	//		return defValue.(string)
-	//	case int, int8, int16, int32, int64:
-	//		return fmt.Sprintf("%d", defValue)
-	//	case float32, float64:
-	//		return fmt.Sprintf("%f", defValue)
-	//	case bool:
-	//		return fmt.Sprintf("%b", defValue)
-	//	case nil:
-	//		return "无"
-	//	default:
-	//		panic(fmt.Sprintf("%s does not support yet", t))
-	//	}
-	//}
 	api := new(SingleAPI)
 	api.ActionID = resp.ActionID
+	api.ActionDesc = resp.ActionDesc
 	api.RespFields = resp.Fields
 	api.RespTypes = resp.CustomTypes
 	if req != nil {
@@ -281,7 +260,6 @@ func FormatSingleAPI(req *ReqAPI, resp *RespAPI) *bytes.Buffer {
 		api.ReqFields = req.Fields
 		api.ReqTypes = req.CustomTypes
 	}
-	fmt.Printf("%q, %q\n", *req, *resp)
 	doc, err := template.New("request").Funcs(template.FuncMap{"printDesc": printDesc, "printNeed": printNeed}).
 		Parse(APITemplate)
 	if err != nil {
@@ -347,7 +325,6 @@ func pkgStructs(pkgPath string) (string, map[string]*StructType) {
 			continue
 		}
 		actionID := strings.Split(fileName[:len(fileName)-3], "_")[1]
-		fmt.Println(fileName, actionID)
 		name, structs := collectStructs(file)
 		if len(structs) < 1 {
 			continue
@@ -379,13 +356,16 @@ func collectStructs(srcPath string) (string, map[string]*StructType) {
 		var structDec string
 		// get type specification
 		switch x := n.(type) {
-		case *ast.TypeSpec:
-			structName = x.Name.Name
-			t = x.Type
+		case *ast.GenDecl:
+			if len(x.Specs) != 1 {
+				return true
+			}
 			structDec = x.Doc.Text()
-			println("*********")
-			fmt.Println("struct Dec is ", x.Doc.Text(), x.Comment.Text())
-			println("*********")
+			switch xs := x.Specs[0].(type) {
+			case *ast.TypeSpec:
+				structName = xs.Name.Name
+				t = xs.Type
+			}
 		default:
 			return true
 		}
@@ -396,11 +376,12 @@ func collectStructs(srcPath string) (string, map[string]*StructType) {
 		s := new(StructType)
 		s.Name = structName
 		s.Fields = genField(x, srcPath)
-		s.Desc = structDec
+		s.setDesc(structDec)
 		allStruct[structName] = s
 		return true
 	}
 	ast.Inspect(f, findStruct)
+	//ast.Print(fs, f)
 	return f.Name.String(), allStruct
 }
 
@@ -422,9 +403,7 @@ func genField(node *ast.StructType, srcPath string) []*APIField {
 		} else {
 			newField.Desc = f.Doc.Text()
 		}
-		if newField.Alias == "" {
-			newField.Alias = newField.Name
-		}
+		newField.Alias = newField.Name
 		field = append(field, newField)
 	}
 	return field

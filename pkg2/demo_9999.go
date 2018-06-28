@@ -1,9 +1,10 @@
+//pkg2 login
 package pkg2
 
-//DemoLoginParams struct to test
+//DemoLoginParams demo login
 type DemoLoginParams struct {
 	//jwt doc
-	Jwt string `valid:"required"` // jwt comment
+	Jwt string `valid:"required"`
 	//xx doc
 	DeviceType string `valid:"required"`
 	//DeviceOS doc
@@ -11,7 +12,9 @@ type DemoLoginParams struct {
 	//RetailID doc
 	RetailId string `valid:"required"`
 }
+type name string
 
+//Resp login
 type DemoLoginResp struct {
 	Role       Role
 	SystemTime int64
@@ -19,6 +22,7 @@ type DemoLoginResp struct {
 
 //Role Doc
 type Role struct {
+	//role name
 	Name string
 	Age  int
 }
