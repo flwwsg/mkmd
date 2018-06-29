@@ -1,7 +1,7 @@
 package pkg1
 
 // Demo999 struct to test
-type Demo999 struct {
+type Demo999Resp struct {
 	ID     string `dcapi:"req; alias:id;" json:"-"`
 	Number int    `dcapi:"resp"`
 	Demo   int64  `dcapi:"resp"`

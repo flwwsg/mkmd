@@ -25,15 +25,3 @@ type LoginResp struct {
 	//system time 描述
 	SystemTime int64
 }
-
-type Role struct {
-	Id       string
-	ShowId   int
-	Nickname string
-	Sex      int16
-	Avatar   int16
-	Lv       int16
-	VipLv    int16
-	Exp      int
-	Gold     int64
-}

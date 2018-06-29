@@ -23,29 +23,7 @@ const TokenTag = "valid"
 
 // APITemplate template of md
 const APITemplate = `
-## {{.ActionID}} {{.ActionDesc}}
-
-### 自定义数据类型
-
-{{ range $i, $typ := .ReqTypes}}
-#### {{$typ.Name}}
-字段|类型|描述|
----|---|---
-{{range $i, $f := $typ.Fields}}
-{{- $f.Alias}} | {{$f.ValueType | printf "%s" }} | {{printDesc $f.Desc }}
-{{end -}}
-{{end -}}
-
-{{range $i, $typ := .RespTypes}}
-
-#### {{$typ.Name}}
-
-字段|类型|描述|
----|---|---
-{{range $i, $f := $typ.Fields}}
-{{- $f.Alias}} | {{$f.ValueType | printf "%s" }} | {{printDesc $f.Desc }}
-{{end -}}
-{{end}}
+### {{.ActionID}} {{.ActionDesc}}
 
 #### 请求
 
@@ -53,7 +31,7 @@ const APITemplate = `
 ---|---|---|---
 {{range $i, $f := .ReqFields}}
 {{- $f.Alias}} | {{$f.ValueType | printf "%s" }}| {{printDesc $f.Desc }}
-{{end }}
+{{end}}
 
 #### 响应
 
@@ -61,6 +39,23 @@ const APITemplate = `
 ---|---|---
 {{range $i, $f := .RespFields}}
 {{- $f.Alias}} | {{$f.ValueType | printf "%s" }} | {{printDesc $f.Desc }}
+{{end -}}
+`
+
+// CustomTypeTemplate template for custom type
+const CustomTypeTemplate = `
+### 自定义数据类型
+{{$length := len .}}
+{{- if eq $length 0}}
+#### 无
+{{end -}}
+{{range $i, $typ := .}}
+#### {{$typ.Name}}
+字段|类型|描述|
+---|---|---
+{{range $i, $f := $typ.Fields}}
+{{- $f.Alias}} | {{$f.ValueType | printf "%s" }} | {{printDesc $f.Desc }}
+{{end -}}
 {{end -}}
 `
 
@@ -78,8 +73,6 @@ type APIField struct {
 type SingleAPI struct {
 	ActionID   string
 	ActionDesc string
-	ReqTypes   []*StructType
-	RespTypes  []*StructType
 	ReqFields  *[]*APIField
 	RespFields *[]*APIField
 }
@@ -133,7 +126,7 @@ func GenDoc(apiPath string) string {
 	}
 	_, structs := pkgStructs(input)
 	req, resp := GenAPI(&structs)
-	rtn := make([]string, len(resp))
+	rtn := make([]string, len(resp)+1)
 	idx := make([]int, len(resp))
 	for i, api := range resp {
 		n, err := strconv.Atoi(api.ActionID)
@@ -143,23 +136,28 @@ func GenDoc(apiPath string) string {
 		idx[i] = n
 	}
 	sort.Ints(idx)
+	customTypes := make([]*StructType, 0)
 	for _, aid := range idx {
-		for _, respAPI := range resp {
+		for i, respAPI := range resp {
 			if respAPI.ActionID == strconv.Itoa(aid) {
 				//find request struct
-				find := new(ReqAPI)
+				var find *ReqAPI
+				customTypes = append(customTypes, respAPI.CustomTypes...)
 				for _, reqAPI := range req {
 					if reqAPI.ActionID == strconv.Itoa(aid) {
 						find = reqAPI
+						customTypes = append(customTypes, reqAPI.CustomTypes...)
 						break
 					}
 				}
 				b := FormatSingleAPI(find, respAPI)
-				rtn = append(rtn, b.String())
+				rtn[i+1] = b.String()
 			}
 		}
-
 	}
+	customTypes = unique(customTypes)
+	b := FormatCustomTypes(customTypes)
+	rtn[0] = b.String()
 	s := strings.Join(rtn, "")
 	return s
 }
@@ -262,14 +260,33 @@ func FormatSingleAPI(req *ReqAPI, resp *RespAPI) *bytes.Buffer {
 	api.ActionID = resp.ActionID
 	api.ActionDesc = resp.ActionDesc
 	api.RespFields = resp.Fields
-	api.RespTypes = resp.CustomTypes
 	if req != nil {
 		api.ActionDesc = req.ActionDesc
 		api.ReqFields = req.Fields
-		api.ReqTypes = req.CustomTypes
+	} else {
+		api.ReqFields = new([]*APIField)
+		*api.ReqFields = append(*api.ReqFields, emptyField())
 	}
 	doc, err := template.New("request").Funcs(template.FuncMap{"printDesc": printDesc, "printNeed": printNeed}).
 		Parse(APITemplate)
+	if err != nil {
+		log.Fatal(err)
+	}
+	b := new(bytes.Buffer)
+	doc.Execute(b, api)
+	return b
+}
+
+// FormatCustomTypes format cutom types in template
+func FormatCustomTypes(api []*StructType) *bytes.Buffer {
+	var printDesc = func(desc string) string {
+		if desc == "" {
+			return "无"
+		}
+		return strings.TrimSpace(desc)
+	}
+	doc, err := template.New("customTypes").Funcs(template.FuncMap{"printDesc": printDesc}).
+		Parse(CustomTypeTemplate)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -419,6 +436,16 @@ func genField(node *ast.StructType, srcPath string) []*APIField {
 
 //helper function
 
+func emptyField() *APIField {
+	field := new(APIField)
+	field.Name = "无"
+	field.Alias = field.Name
+	field.ValueType = "无"
+	field.Desc = ""
+	field.Required = false
+	return field
+}
+
 func findTypeStruct(name string, pkg *map[string]*StructType) *StructType {
 	for _, s := range *pkg {
 		if s.isType(name) {
@@ -470,4 +497,16 @@ func GetTag(t string, tk string) string {
 		return t[tagStart : tagStart+firstQ+tagEnd+2]
 	}
 	return ""
+}
+
+func unique(l []*StructType) []*StructType {
+	keys := make(map[string]bool)
+	newList := make([]*StructType, 0)
+	for _, s := range l {
+		if _, v := keys[s.Name]; !v {
+			keys[s.Name] = true
+			newList = append(newList, s)
+		}
+	}
+	return newList
 }
