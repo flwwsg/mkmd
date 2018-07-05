@@ -137,21 +137,19 @@ func GenDoc(apiPath string) string {
 	}
 	sort.Ints(idx)
 	customTypes := make([]*StructType, 0)
-	for _, aid := range idx {
-		for i, respAPI := range resp {
+	for i, aid := range idx {
+		for _, respAPI := range resp {
 			if respAPI.ActionID == strconv.Itoa(aid) {
 				//find request struct
-				var find *ReqAPI
 				customTypes = append(customTypes, respAPI.CustomTypes...)
 				for _, reqAPI := range req {
 					if reqAPI.ActionID == strconv.Itoa(aid) {
-						find = reqAPI
 						customTypes = append(customTypes, reqAPI.CustomTypes...)
+						b := FormatSingleAPI(reqAPI, respAPI)
+						rtn[i+1] = b.String()
 						break
 					}
 				}
-				b := FormatSingleAPI(find, respAPI)
-				rtn[i+1] = b.String()
 			}
 		}
 	}
@@ -260,13 +258,8 @@ func FormatSingleAPI(req *ReqAPI, resp *RespAPI) *bytes.Buffer {
 	api.ActionID = resp.ActionID
 	api.ActionDesc = resp.ActionDesc
 	api.RespFields = resp.Fields
-	if req != nil {
-		api.ActionDesc = req.ActionDesc
-		api.ReqFields = req.Fields
-	} else {
-		api.ReqFields = new([]*APIField)
-		*api.ReqFields = append(*api.ReqFields, emptyField())
-	}
+	api.ActionDesc = req.ActionDesc
+	api.ReqFields = req.Fields
 	doc, err := template.New("request").Funcs(template.FuncMap{"printDesc": printDesc, "printNeed": printNeed}).
 		Parse(APITemplate)
 	if err != nil {
@@ -339,26 +332,39 @@ func GetCustomTypes(api CustomTypes, field *APIField, pkg *map[string]*StructTyp
 	}
 }
 
-// pkgStructs collect struct from giving package path
+// pkgStructs collect all struct from giving package path
 func pkgStructs(pkgPath string) (string, map[string]*StructType) {
 	resp := make(map[string]*StructType)
 	files := ListDir(pkgPath, true, false)
 	pkgName := ""
 	for _, file := range files {
+		getReq := false
+		getResp := false
 		fileName := filepath.Base(file)
-		if !IsActionID(fileName) {
+		actionID, ok := FindActionID(fileName)
+		if !ok {
 			continue
 		}
-		actionID := strings.Split(fileName[:len(fileName)-3], "_")[1]
+		//get package name and map[structName] struct
 		name, structs := collectStructs(file)
-		if len(structs) < 1 {
-			continue
-		}
 		for k, v := range structs {
-			if v.isReq() || v.isResp() {
+			if v.isReq() {
 				v.ActionID = actionID
+				getReq = true
+			}
+			if v.isResp() {
+				v.ActionID = actionID
+				getResp = true
 			}
 			resp[k] = v
+		}
+		if !getReq {
+			defaultReq := defaultReq(actionID)
+			resp[defaultReq.Name] = defaultReq
+		}
+		if !getResp {
+			defaultResp := defaultResp(actionID)
+			resp[defaultResp.Name] = defaultResp
 		}
 		pkgName = name
 	}
@@ -446,6 +452,39 @@ func emptyField() *APIField {
 	return field
 }
 
+//default request
+func defaultReq(aid string) *StructType {
+	s := new(StructType)
+	s.ActionID = aid
+	s.Name = "Default" + aid + "Params"
+	//roleID
+	rid := new(APIField)
+	rid.Name = "RoleId"
+	rid.Alias = rid.Name
+	rid.ValueType = "string"
+	rid.Required = true
+	rid.Desc = "角色id"
+	s.Fields = []*APIField{rid}
+	return s
+}
+
+func defaultResp(aid string) *StructType {
+	s := new(StructType)
+	s.ActionID = aid
+	s.Name = "Default" + aid + "Resp"
+	info := new(APIField)
+	info.Name = "Info"
+	info.Alias = info.Name
+	info.ValueType = "string"
+	code := new(APIField)
+	code.Name = "Code"
+	code.Alias = code.Name
+	code.ValueType = "int"
+	code.Desc = "0 成功， 1 失败"
+	s.Fields = []*APIField{info, code}
+	return s
+}
+
 func findTypeStruct(name string, pkg *map[string]*StructType) *StructType {
 	for _, s := range *pkg {
 		if s.isType(name) {
@@ -477,16 +516,6 @@ func ListDir(fpath string, fullPath bool, listDir bool) []string {
 	return dirs
 }
 
-// IsActionID check given name is action id or not
-func IsActionID(name string) bool {
-	re := regexp.MustCompile("[0-9]+")
-	res := re.FindAllString(name, -1)
-	if len(res) == 1 {
-		return true
-	}
-	return false
-}
-
 // GetTag find tag with specified token
 func GetTag(t string, tk string) string {
 	// tag = "`valid:"ass:xxx; sss""
@@ -509,4 +538,14 @@ func unique(l []*StructType) []*StructType {
 		}
 	}
 	return newList
+}
+
+//FindActionID if find actionID, return actionID and identifier(bool)
+func FindActionID(s string) (string, bool) {
+	re := regexp.MustCompile("[0-9]+")
+	res := re.FindAllString(s, -1)
+	if len(res) == 1 {
+		return res[0], true
+	}
+	return "", false
 }
