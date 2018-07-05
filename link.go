@@ -442,16 +442,6 @@ func genField(node *ast.StructType, srcPath string) []*APIField {
 
 //helper function
 
-func emptyField() *APIField {
-	field := new(APIField)
-	field.Name = "无"
-	field.Alias = field.Name
-	field.ValueType = "无"
-	field.Desc = ""
-	field.Required = false
-	return field
-}
-
 //default request
 func defaultReq(aid string) *StructType {
 	s := new(StructType)
