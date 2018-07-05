@@ -348,6 +348,10 @@ func pkgStructs(pkgPath string) (string, map[string]*StructType) {
 		//get package name and map[structName] struct
 		name, structs := collectStructs(file)
 		for k, v := range structs {
+			// add empty filed in struct
+			if len(v.Fields) == 0 {
+				v.Fields = []*APIField{emptyField()}
+			}
 			if v.isReq() {
 				v.ActionID = actionID
 				getReq = true
@@ -441,6 +445,16 @@ func genField(node *ast.StructType, srcPath string) []*APIField {
 }
 
 //helper function
+
+func emptyField() *APIField {
+	field := new(APIField)
+	field.Name = "无"
+	field.Alias = field.Name
+	field.ValueType = "无"
+	field.Desc = ""
+	field.Required = false
+	return field
+}
 
 //default request
 func defaultReq(aid string) *StructType {
