@@ -28,7 +28,7 @@ const APITemplate = `
 #### 请求
 
 字段|类型|描述|
----|---|---|---
+---|---|---
 {{range $i, $f := .ReqFields}}
 {{- $f.Alias}} | {{$f.ValueType | printf "%s" }}| {{printDesc $f.Desc }}
 {{end}}
