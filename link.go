@@ -138,12 +138,13 @@ func GenDoc(apiPath string) string {
 	sort.Ints(idx)
 	customTypes := make([]*StructType, 0)
 	for i, aid := range idx {
+		strAID := strconv.Itoa(aid)
 		for _, respAPI := range resp {
-			if respAPI.ActionID == strconv.Itoa(aid) {
+			if respAPI.ActionID == strAID {
 				//find request struct
 				customTypes = append(customTypes, respAPI.CustomTypes...)
 				for _, reqAPI := range req {
-					if reqAPI.ActionID == strconv.Itoa(aid) {
+					if reqAPI.ActionID == strAID {
 						customTypes = append(customTypes, reqAPI.CustomTypes...)
 						b := FormatSingleAPI(reqAPI, respAPI)
 						rtn[i+1] = b.String()
@@ -546,6 +547,10 @@ func unique(l []*StructType) []*StructType {
 
 //FindActionID if find actionID, return actionID and identifier(bool)
 func FindActionID(s string) (string, bool) {
+	t := strings.Split(s, "_")
+	if t[len(t)-1] == "test" || t[len(t)-1] == "test.go" {
+		return "", false
+	}
 	re := regexp.MustCompile("[0-9]+")
 	res := re.FindAllString(s, -1)
 	if len(res) == 1 {
