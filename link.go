@@ -2,13 +2,11 @@ package main
 
 import (
 	"bytes"
-	"flag"
 	"go/ast"
 	"go/parser"
 	"go/token"
 	"io/ioutil"
 	"log"
-	"os"
 	"path"
 	"path/filepath"
 	"regexp"
@@ -106,16 +104,16 @@ type CustomTypes interface {
 	AddTypes(structType *StructType)
 }
 
-var i = flag.String("in", "", "api directory to generate md file")
+//var i = flag.String("in", "", "api directory to generate md file")
 
 func main() {
-	//find file path
-	flag.Parse()
-	if *i == "" {
-		flag.Usage()
-		os.Exit(1)
-	}
-	println(GenDoc(*i))
+	////find file path
+	//flag.Parse()
+	//if *i == "" {
+	//	flag.Usage()
+	//	os.Exit(1)
+	//}
+	println(GenDoc("./pkg2"))
 }
 
 //GenDoc generating api file
@@ -192,9 +190,10 @@ func (s *StructType) isType(typeName string) bool {
 	return false
 }
 
-func (s *StructType) setDesc(comm string) {
+func (s *StructType) SetDesc(comm string) {
 	//drop struct name
 	desc := strings.Replace(comm, s.Name, "", 1)
+	desc = strings.Replace(desc, "\n", " ", -1)
 	s.Desc = strings.TrimSpace(desc)
 }
 
@@ -214,6 +213,13 @@ func (field *APIField) IsValidTag(t string) bool {
 		return false
 	}
 	return true
+}
+
+func (field *APIField) SetDesc(s string) {
+	desc := strings.Replace(s, field.Name, "", 1)
+	desc = strings.Replace(desc, "\n", " ", -1)
+	field.Desc = strings.TrimSpace(desc)
+
 }
 
 //ParseTag handle tag
@@ -259,7 +265,9 @@ func FormatSingleAPI(req *ReqAPI, resp *RespAPI) *bytes.Buffer {
 	api.ActionID = resp.ActionID
 	api.ActionDesc = resp.ActionDesc
 	api.RespFields = resp.Fields
-	api.ActionDesc = req.ActionDesc
+	if req.ActionDesc != "" {
+		api.ActionDesc = req.ActionDesc
+	}
 	api.ReqFields = req.Fields
 	doc, err := template.New("request").Funcs(template.FuncMap{"printDesc": printDesc, "printNeed": printNeed}).
 		Parse(APITemplate)
@@ -412,7 +420,7 @@ func collectStructs(srcPath string) (string, map[string]*StructType) {
 		s := new(StructType)
 		s.Name = structName
 		s.Fields = genField(x, srcPath)
-		s.setDesc(structDec)
+		s.SetDesc(structDec)
 		allStruct[structName] = s
 		return true
 	}
@@ -435,9 +443,9 @@ func genField(node *ast.StructType, srcPath string) []*APIField {
 		newField.ValueType = typeName
 		newField.Name = f.Names[0].Name
 		if f.Comment.Text() != "" {
-			newField.Desc = f.Comment.Text()
+			newField.SetDesc(f.Comment.Text())
 		} else {
-			newField.Desc = f.Doc.Text()
+			newField.SetDesc(f.Doc.Text())
 		}
 		newField.Alias = newField.Name
 		field = append(field, newField)
